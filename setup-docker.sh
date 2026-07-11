@@ -149,15 +149,39 @@ fi
 set_env_value() {
     local key="$1"
     local value="$2"
-    local escaped_value
+    local tmp_file
 
-    escaped_value="$(printf '%s' "$value" | sed 's/[&|]/\\&/g')"
+    tmp_file="$(mktemp)"
 
-    if grep -qE "^${key}=" .env; then
-        sed -i -E "s|^${key}=.*$|${key}=${escaped_value}|" .env
-    else
-        printf '\n%s=%s\n' "$key" "$value" >> .env
-    fi
+    awk -v key="$key" -v value="$value" '
+        BEGIN {
+            found = 0
+            pattern = "^[[:space:]]*#?[[:space:]]*" key "="
+        }
+
+        $0 ~ pattern {
+            if (!found) {
+                print key "=" value
+                found = 1
+            }
+
+            next
+        }
+
+        {
+            print
+        }
+
+        END {
+            if (!found) {
+                print ""
+                print key "=" value
+            }
+        }
+    ' .env > "$tmp_file"
+
+    cat "$tmp_file" > .env
+    rm -f "$tmp_file"
 }
 
 set_env_value "COMPOSE_PROJECT_NAME" "$PROJECT_SLUG"
